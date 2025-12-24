@@ -70,11 +70,19 @@
       return res.json();
     }
 
+    // Fast relays for bulk profile fetching (fewer connections)
+    const FAST_RELAYS = [
+      'wss://purplepag.es',
+      'wss://relay.nostr.band',
+      'wss://relay.damus.io'
+    ];
+
     // Fetch profile from Nostr relays (kind 0)
-    async function fetchProfile(pubkey) {
-      // Try all relays in parallel
+    async function fetchProfile(pubkey, fast = false) {
+      const relays = fast ? FAST_RELAYS : RELAYS;
+      // Try relays in parallel
       const results = await Promise.all(
-        RELAYS.map(relay => fetchFromRelay(relay, pubkey, 0))
+        relays.map(relay => fetchFromRelay(relay, pubkey, 0))
       );
 
       // Return first valid profile found
@@ -282,7 +290,7 @@
 
       useEffect(() => {
         let cancelled = false;
-        fetchProfile(pubkey).then(p => {
+        fetchProfile(pubkey, true).then(p => {
           if (!cancelled) {
             setProfile(p);
             setLoading(false);
@@ -327,7 +335,7 @@
     // Follows List Component
     function FollowsList({ follows, onSelect, loading }) {
       const [page, setPage] = useState(0);
-      const perPage = 20;
+      const perPage = 10;
       const totalPages = Math.ceil(follows.length / perPage);
       const displayed = follows.slice(page * perPage, (page + 1) * perPage);
 
