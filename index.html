@@ -231,8 +231,12 @@
     }
 
     // DID Document Component
-    function DidDocument({ did }) {
+    function DidDocument({ did, provider }) {
       const [expanded, setExpanded] = useState(false);
+
+      // Extract pubkey from did:nostr:<pubkey>
+      const pubkey = did.id?.replace('did:nostr:', '') || '';
+      const jsonUrl = `${provider}/.well-known/did/nostr/${pubkey}.json`;
 
       return html`
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
@@ -251,7 +255,12 @@
             </pre>
           ` : html`
             <div class="text-sm text-gray-600 dark:text-gray-400 overflow-hidden">
-              <p class="break-all"><span class="font-mono text-purple-600 dark:text-purple-400 text-xs sm:text-sm">${did.id}</span></p>
+              <a
+                href=${jsonUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="break-all font-mono text-purple-600 dark:text-purple-400 text-xs sm:text-sm hover:underline"
+              >${did.id}</a>
             </div>
           `}
         </div>
@@ -496,7 +505,7 @@
                   onClick=${handleExample}
                   class="text-purple-600 hover:text-purple-800 dark:text-purple-400"
                 >
-                  Try example
+                  Try jb55
                 </button>
                 <div class="flex items-center gap-1 sm:gap-2 text-gray-600 dark:text-gray-400">
                   <label>Provider:</label>
@@ -527,7 +536,7 @@
                 <${ProfileCard} profile=${profile} pubkey=${pubkey} />
 
                 <!-- DID Document -->
-                ${didDoc ? html`<${DidDocument} did=${didDoc} />` : null}
+                ${didDoc ? html`<${DidDocument} did=${didDoc} provider=${provider} />` : null}
 
                 <!-- Follows -->
                 <${FollowsList}
