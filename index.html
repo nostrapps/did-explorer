@@ -492,7 +492,7 @@
       }
 
       return html`
-        <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
+        <div class="min-h-screen bg-gray-100 dark:bg-gray-900 overflow-x-hidden">
           <!-- Header -->
           <header class="bg-white dark:bg-gray-800 shadow-sm">
             <div class="max-w-4xl mx-auto px-4 py-4 sm:py-6">
@@ -607,7 +607,7 @@
     render(html`<${App} />`, document.getElementById('app'));
   </script>
 </head>
-<body class="dark:bg-gray-900">
-  <div id="app"></div>
+<body class="dark:bg-gray-900 overflow-x-hidden">
+  <div id="app" class="overflow-x-hidden"></div>
 </body>
 </html>
