@@ -18,6 +18,13 @@
     // Default provider and example
     const DEFAULT_PROVIDER = 'https://nostr.rocks';
     const EXAMPLE_PUBKEY = 'f0af1224d58d3f8c4e64d0182b3ec9966b3f2632f392c64eee669a627dfa6c71';
+    const RELAYS = [
+      'wss://relay.damus.io',
+      'wss://nos.lol',
+      'wss://relay.nostr.band',
+      'wss://purplepag.es',
+      'wss://relay.primal.net'
+    ];
 
     // Utility: format pubkey for display
     function formatPubkey(pk, len = 16) {
@@ -39,6 +46,18 @@
       return trimmed;
     }
 
+    // Utility: get/set URL query param
+    function getQueryParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
+
+    function setQueryParam(name, value) {
+      const url = new URL(window.location);
+      url.searchParams.set(name, value);
+      window.history.pushState({}, '', url);
+    }
+
     // Fetch DID document from provider
     async function fetchDidDocument(provider, pubkey) {
       const url = `${provider}/.well-known/did/nostr/${pubkey}.json`;
@@ -48,19 +67,23 @@
     }
 
     // Fetch profile from Nostr relays (kind 0)
-    async function fetchProfile(pubkey, relays = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band']) {
+    async function fetchProfile(pubkey) {
       return new Promise((resolve) => {
         let resolved = false;
+        const sockets = [];
+
         const timeout = setTimeout(() => {
           if (!resolved) {
             resolved = true;
+            sockets.forEach(ws => ws.close());
             resolve(null);
           }
-        }, 5000);
+        }, 8000);
 
-        for (const relay of relays) {
+        for (const relay of RELAYS) {
           try {
             const ws = new WebSocket(relay);
+            sockets.push(ws);
             const subId = Math.random().toString(36).slice(2);
 
             ws.onopen = () => {
@@ -75,34 +98,38 @@
                   if (!resolved) {
                     resolved = true;
                     clearTimeout(timeout);
+                    sockets.forEach(s => s.close());
                     resolve(content);
                   }
-                  ws.close();
                 }
               } catch {}
             };
 
-            ws.onerror = () => ws.close();
-            setTimeout(() => ws.close(), 5000);
+            ws.onerror = () => {};
           } catch {}
         }
       });
     }
 
     // Fetch follows from Nostr relays (kind 3)
-    async function fetchFollows(pubkey, relays = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band']) {
+    async function fetchFollows(pubkey) {
       return new Promise((resolve) => {
         let resolved = false;
+        let bestResult = [];
+        const sockets = [];
+
         const timeout = setTimeout(() => {
           if (!resolved) {
             resolved = true;
-            resolve([]);
+            sockets.forEach(ws => ws.close());
+            resolve(bestResult);
           }
-        }, 5000);
+        }, 8000);
 
-        for (const relay of relays) {
+        for (const relay of RELAYS) {
           try {
             const ws = new WebSocket(relay);
+            sockets.push(ws);
             const subId = Math.random().toString(36).slice(2);
 
             ws.onopen = () => {
@@ -115,19 +142,33 @@
                 if (msg[0] === 'EVENT' && msg[2]?.kind === 3) {
                   const tags = msg[2].tags || [];
                   const follows = tags.filter(t => t[0] === 'p').map(t => t[1]);
-                  if (!resolved) {
-                    resolved = true;
-                    clearTimeout(timeout);
-                    resolve(follows);
+                  // Keep the largest follows list we find
+                  if (follows.length > bestResult.length) {
+                    bestResult = follows;
                   }
-                  ws.close();
+                  // If we found a good list, resolve after a short delay to allow other relays
+                  if (follows.length > 0 && !resolved) {
+                    setTimeout(() => {
+                      if (!resolved) {
+                        resolved = true;
+                        clearTimeout(timeout);
+                        sockets.forEach(s => s.close());
+                        resolve(bestResult);
+                      }
+                    }, 1000);
+                  }
                 }
-              } catch {}
+              } catch (err) {
+                console.error('Parse error:', err);
+              }
             };
 
-            ws.onerror = () => ws.close();
-            setTimeout(() => ws.close(), 5000);
-          } catch {}
+            ws.onerror = (err) => {
+              console.error('WS error:', relay, err);
+            };
+          } catch (err) {
+            console.error('Connection error:', relay, err);
+          }
         }
       });
     }
@@ -199,11 +240,20 @@
     }
 
     // Follows List Component
-    function FollowsList({ follows, onSelect }) {
+    function FollowsList({ follows, onSelect, loading }) {
       const [page, setPage] = useState(0);
       const perPage = 20;
       const totalPages = Math.ceil(follows.length / perPage);
       const displayed = follows.slice(page * perPage, (page + 1) * perPage);
+
+      if (loading) {
+        return html`
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Following</h3>
+            <p class="text-gray-500 dark:text-gray-400">Loading follows...</p>
+          </div>
+        `;
+      }
 
       if (follows.length === 0) {
         return html`
@@ -275,16 +325,17 @@
       const [profile, setProfile] = useState(null);
       const [follows, setFollows] = useState([]);
       const [loading, setLoading] = useState(false);
+      const [loadingFollows, setLoadingFollows] = useState(false);
       const [error, setError] = useState('');
 
-      // Check URL hash on load
+      // Check URL query param on load
       useEffect(() => {
-        const hash = window.location.hash.slice(1);
-        if (hash) {
-          const pk = parseDid(hash);
-          if (isValidPubkey(pk)) {
-            setInput(hash);
-            loadDid(pk);
+        const pk = getQueryParam('pubkey');
+        if (pk) {
+          const parsed = parseDid(pk);
+          if (isValidPubkey(parsed)) {
+            setInput(pk);
+            loadDid(parsed);
           }
         }
       }, []);
@@ -296,14 +347,15 @@
         }
 
         setLoading(true);
+        setLoadingFollows(true);
         setError('');
         setPubkey(pk);
         setDidDoc(null);
         setProfile(null);
         setFollows([]);
 
-        // Update URL hash
-        window.location.hash = pk;
+        // Update URL query param
+        setQueryParam('pubkey', pk);
 
         try {
           // Fetch DID document
@@ -315,18 +367,21 @@
         }
 
         try {
-          // Fetch profile and follows from relays in parallel
-          const [profileData, followsData] = await Promise.all([
-            fetchProfile(pk),
-            fetchFollows(pk)
-          ]);
+          // Fetch profile first
+          const profileData = await fetchProfile(pk);
           setProfile(profileData);
+          setLoading(false);
+
+          // Then fetch follows (can take longer)
+          const followsData = await fetchFollows(pk);
+          console.log('Follows fetched:', followsData.length);
           setFollows(followsData);
+          setLoadingFollows(false);
         } catch (e) {
           console.error('Relay fetch error:', e);
+          setLoading(false);
+          setLoadingFollows(false);
         }
-
-        setLoading(false);
       }
 
       function handleSubmit(e) {
@@ -417,6 +472,7 @@
                 <!-- Follows -->
                 <${FollowsList}
                   follows=${follows}
+                  loading=${loadingFollows}
                   onSelect=${(pk) => {
                     setInput(pk);
                     loadDid(pk);
