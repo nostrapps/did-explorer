@@ -412,7 +412,7 @@
       const [loadingFollows, setLoadingFollows] = useState(false);
       const [error, setError] = useState('');
 
-      // Check URL query param on load
+      // Check URL query param on load, or load example by default
       useEffect(() => {
         const pk = getQueryParam('pubkey');
         if (pk) {
@@ -421,6 +421,10 @@
             setInput(pk);
             loadDid(parsed);
           }
+        } else {
+          // Load jb55 by default
+          setInput(EXAMPLE_PUBKEY);
+          loadDid(EXAMPLE_PUBKEY);
         }
       }, []);
 
