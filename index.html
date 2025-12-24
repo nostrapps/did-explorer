@@ -19,11 +19,11 @@
     const DEFAULT_PROVIDER = 'https://nostr.rocks';
     const EXAMPLE_PUBKEY = 'f0af1224d58d3f8c4e64d0182b3ec9966b3f2632f392c64eee669a627dfa6c71';
     const RELAYS = [
-      'wss://relay.damus.io',
       'wss://nos.lol',
-      'wss://relay.nostr.band',
       'wss://purplepag.es',
-      'wss://relay.primal.net'
+      'wss://relay.primal.net',
+      'wss://relay.snort.social',
+      'wss://nostr.wine'
     ];
 
     // Utility: format pubkey for display
@@ -68,109 +68,114 @@
 
     // Fetch profile from Nostr relays (kind 0)
     async function fetchProfile(pubkey) {
-      return new Promise((resolve) => {
-        let resolved = false;
-        const sockets = [];
+      // Try all relays in parallel
+      const results = await Promise.all(
+        RELAYS.map(relay => fetchFromRelay(relay, pubkey, 0))
+      );
 
-        const timeout = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            sockets.forEach(ws => ws.close());
-            resolve(null);
-          }
-        }, 8000);
-
-        for (const relay of RELAYS) {
+      // Return first valid profile found
+      for (const event of results) {
+        if (event?.content) {
           try {
-            const ws = new WebSocket(relay);
-            sockets.push(ws);
-            const subId = Math.random().toString(36).slice(2);
-
-            ws.onopen = () => {
-              ws.send(JSON.stringify(['REQ', subId, { kinds: [0], authors: [pubkey], limit: 1 }]));
-            };
-
-            ws.onmessage = (e) => {
-              try {
-                const msg = JSON.parse(e.data);
-                if (msg[0] === 'EVENT' && msg[2]?.kind === 0) {
-                  const content = JSON.parse(msg[2].content);
-                  if (!resolved) {
-                    resolved = true;
-                    clearTimeout(timeout);
-                    sockets.forEach(s => s.close());
-                    resolve(content);
-                  }
-                }
-              } catch {}
-            };
-
-            ws.onerror = () => {};
+            return JSON.parse(event.content);
           } catch {}
         }
+      }
+      return null;
+    }
+
+    // Fetch from a single relay
+    function fetchFromRelay(relay, pubkey, kind) {
+      return new Promise((resolve) => {
+        let resolved = false;
+        const subId = Math.random().toString(36).slice(2);
+
+        const timer = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            try { ws.close(); } catch {}
+            resolve(null);
+          }
+        }, 5000);
+
+        let ws;
+        try {
+          ws = new WebSocket(relay);
+        } catch {
+          clearTimeout(timer);
+          resolve(null);
+          return;
+        }
+
+        ws.onopen = () => {
+          try {
+            ws.send(JSON.stringify(['REQ', subId, { kinds: [kind], authors: [pubkey], limit: 1 }]));
+          } catch {
+            clearTimeout(timer);
+            resolved = true;
+            resolve(null);
+          }
+        };
+
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg[0] === 'EVENT' && msg[2]?.kind === kind) {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                ws.close();
+                resolve(msg[2]);
+              }
+            }
+            if (msg[0] === 'EOSE' && !resolved) {
+              // End of stored events, no data found on this relay
+              resolved = true;
+              clearTimeout(timer);
+              ws.close();
+              resolve(null);
+            }
+          } catch {}
+        };
+
+        ws.onerror = () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            resolve(null);
+          }
+        };
+
+        ws.onclose = () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            resolve(null);
+          }
+        };
       });
     }
 
     // Fetch follows from Nostr relays (kind 3)
     async function fetchFollows(pubkey) {
-      return new Promise((resolve) => {
-        let resolved = false;
-        let bestResult = [];
-        const sockets = [];
+      // Try all relays in parallel
+      const results = await Promise.all(
+        RELAYS.map(relay => fetchFromRelay(relay, pubkey, 3))
+      );
 
-        const timeout = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            sockets.forEach(ws => ws.close());
-            resolve(bestResult);
-          }
-        }, 8000);
-
-        for (const relay of RELAYS) {
-          try {
-            const ws = new WebSocket(relay);
-            sockets.push(ws);
-            const subId = Math.random().toString(36).slice(2);
-
-            ws.onopen = () => {
-              ws.send(JSON.stringify(['REQ', subId, { kinds: [3], authors: [pubkey], limit: 1 }]));
-            };
-
-            ws.onmessage = (e) => {
-              try {
-                const msg = JSON.parse(e.data);
-                if (msg[0] === 'EVENT' && msg[2]?.kind === 3) {
-                  const tags = msg[2].tags || [];
-                  const follows = tags.filter(t => t[0] === 'p').map(t => t[1]);
-                  // Keep the largest follows list we find
-                  if (follows.length > bestResult.length) {
-                    bestResult = follows;
-                  }
-                  // If we found a good list, resolve after a short delay to allow other relays
-                  if (follows.length > 0 && !resolved) {
-                    setTimeout(() => {
-                      if (!resolved) {
-                        resolved = true;
-                        clearTimeout(timeout);
-                        sockets.forEach(s => s.close());
-                        resolve(bestResult);
-                      }
-                    }, 1000);
-                  }
-                }
-              } catch (err) {
-                console.error('Parse error:', err);
-              }
-            };
-
-            ws.onerror = (err) => {
-              console.error('WS error:', relay, err);
-            };
-          } catch (err) {
-            console.error('Connection error:', relay, err);
+      // Find the best result (most follows)
+      let bestFollows = [];
+      for (const event of results) {
+        if (event?.tags) {
+          const follows = event.tags.filter(t => t[0] === 'p').map(t => t[1]);
+          if (follows.length > bestFollows.length) {
+            bestFollows = follows;
           }
         }
-      });
+      }
+
+      console.log('Follows results from relays:', results.filter(r => r).length, 'responded');
+      return bestFollows;
     }
 
     // Profile Card Component
