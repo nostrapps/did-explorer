@@ -285,26 +285,26 @@
 
       return html`
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6">
-          <div class="flex justify-between items-center mb-3 sm:mb-4">
-            <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
+          <div class="flex justify-between items-center mb-3 sm:mb-4 gap-2">
+            <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white shrink-0">
               Following <span class="text-gray-500 font-normal">(${follows.length})</span>
             </h3>
             ${totalPages > 1 ? html`
-              <div class="flex gap-2 items-center text-sm">
+              <div class="flex gap-1 sm:gap-2 items-center text-xs sm:text-sm shrink-0">
                 <button
                   onClick=${() => setPage(p => Math.max(0, p - 1))}
                   disabled=${page === 0}
-                  class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 disabled:opacity-50"
+                  class="px-1.5 sm:px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 disabled:opacity-50"
                 >
-                  Prev
+                  ←
                 </button>
-                <span class="text-gray-600 dark:text-gray-400">${page + 1}/${totalPages}</span>
+                <span class="text-gray-600 dark:text-gray-400 min-w-[3rem] text-center">${page + 1}/${totalPages}</span>
                 <button
                   onClick=${() => setPage(p => Math.min(totalPages - 1, p + 1))}
                   disabled=${page >= totalPages - 1}
-                  class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 disabled:opacity-50"
+                  class="px-1.5 sm:px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 disabled:opacity-50"
                 >
-                  Next
+                  →
                 </button>
               </div>
             ` : null}
@@ -439,7 +439,7 @@
                     value=${input}
                     onInput=${(e) => setInput(e.target.value)}
                     placeholder="Enter pubkey or DID"
-                    class="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm sm:text-base"
+                    class="w-full px-3 py-2.5 sm:py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent text-xs sm:text-base font-mono overflow-hidden text-ellipsis"
                   />
                 </div>
                 <button
