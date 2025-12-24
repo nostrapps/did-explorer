@@ -19,11 +19,15 @@
     const DEFAULT_PROVIDER = 'https://nostr.rocks';
     const EXAMPLE_PUBKEY = 'f0af1224d58d3f8c4e64d0182b3ec9966b3f2632f392c64eee669a627dfa6c71';
     const RELAYS = [
+      'wss://relay.damus.io',
       'wss://nos.lol',
       'wss://purplepag.es',
       'wss://relay.primal.net',
       'wss://relay.snort.social',
-      'wss://nostr.wine'
+      'wss://nostr.wine',
+      'wss://relay.nostr.bg',
+      'wss://nostr.mom',
+      'wss://relay.nostr.net'
     ];
 
     // Utility: format pubkey for display
@@ -92,25 +96,29 @@
 
         const timer = setTimeout(() => {
           if (!resolved) {
+            console.log(`[${relay}] kind ${kind}: timeout`);
             resolved = true;
             try { ws.close(); } catch {}
             resolve(null);
           }
-        }, 5000);
+        }, 8000);
 
         let ws;
         try {
           ws = new WebSocket(relay);
-        } catch {
+        } catch (e) {
+          console.log(`[${relay}] kind ${kind}: connection error`, e);
           clearTimeout(timer);
           resolve(null);
           return;
         }
 
         ws.onopen = () => {
+          console.log(`[${relay}] kind ${kind}: connected, sending REQ`);
           try {
             ws.send(JSON.stringify(['REQ', subId, { kinds: [kind], authors: [pubkey], limit: 1 }]));
-          } catch {
+          } catch (e) {
+            console.log(`[${relay}] kind ${kind}: send error`, e);
             clearTimeout(timer);
             resolved = true;
             resolve(null);
@@ -120,8 +128,10 @@
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
+            console.log(`[${relay}] kind ${kind}: received`, msg[0], msg[2]?.kind);
             if (msg[0] === 'EVENT' && msg[2]?.kind === kind) {
               if (!resolved) {
+                console.log(`[${relay}] kind ${kind}: got event!`);
                 resolved = true;
                 clearTimeout(timer);
                 ws.close();
@@ -129,16 +139,19 @@
               }
             }
             if (msg[0] === 'EOSE' && !resolved) {
-              // End of stored events, no data found on this relay
+              console.log(`[${relay}] kind ${kind}: EOSE (no data)`);
               resolved = true;
               clearTimeout(timer);
               ws.close();
               resolve(null);
             }
-          } catch {}
+          } catch (e) {
+            console.log(`[${relay}] kind ${kind}: parse error`, e);
+          }
         };
 
-        ws.onerror = () => {
+        ws.onerror = (e) => {
+          console.log(`[${relay}] kind ${kind}: ws error`, e);
           if (!resolved) {
             resolved = true;
             clearTimeout(timer);
@@ -148,6 +161,7 @@
 
         ws.onclose = () => {
           if (!resolved) {
+            console.log(`[${relay}] kind ${kind}: closed before resolve`);
             resolved = true;
             clearTimeout(timer);
             resolve(null);
